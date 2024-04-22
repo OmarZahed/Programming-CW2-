@@ -70,3 +70,15 @@ public:
             current = current->next;
         }
     }
+
+void broadcast_message(int num, int sender_id) {
+        std::lock_guard<std::mutex> lock(clients_mtx);
+        ClientNode* current = head;
+        while (current != nullptr) {
+            if (current->id != sender_id) {
+                send(current->socket, &num, sizeof(num), 0);
+            }
+            current = current->next;
+        }
+    }
+};
