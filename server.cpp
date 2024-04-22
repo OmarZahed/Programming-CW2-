@@ -82,3 +82,63 @@ void broadcast_message(int num, int sender_id) {
         }
     }
 };
+
+void handle_client(int client_socket, int id, Clientregistry& clients) { //Handle indivisual client connection
+    char name[MAX_LEN];
+    recv(client_socket, name, sizeof(name), 0);  // recv to identify the client messaging
+    std::string welcome_message = std::string(name) + " has joined";
+    clients.broadcast_message(welcome_message, id); // welcome message broadcasted to all users
+
+    char str[MAX_LEN];
+    while (true) {
+        int bytes_received = recv(client_socket, str, sizeof(str), 0);
+        if (bytes_received <= 0) break;  //when disconnection break
+        std::string message = std::string(name) + ": " + std::string(str);
+        clients.broadcast_message(message, id);
+    }
+
+int main() {
+    int server_socket = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_socket == -1) {
+        perror("socket: ");
+        return -1;
+    }
+//setting IP and port for establishing connection
+    struct sockaddr_in server_addr;
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(12345);
+    server_addr.sin_addr.s_addr = INADDR_ANY;
+    memset(&server_addr.sin_zero, 0, sizeof(server_addr.sin_zero));
+
+    if (bind(server_socket, (struct sockaddr *)&server_addr, sizeof(server_addr)) == -1) {
+        perror("bind: ");
+        close(server_socket);
+        return -1;
+    }
+
+    if (listen(server_socket, 10) == -1) {
+        perror("listen: ");
+        close(server_socket);
+        return -1;
+    }
+
+    std::cout << "Server is running on port 12345" << std::endl;
+
+    ClientRegistry clients;
+    while (true) {
+        struct sockaddr_in client_addr;
+        socklen_t addr_size = sizeof(client_addr);
+        int client_socket = accept(server_socket, (struct sockaddr *)&client_addr, &addr_size);
+        if (client_socket == -1) {
+            perror("accept: ");
+            continue;
+        }
+
+        int id = ntohs(client_addr.sin_port); 
+        clients.registerClient(client_socket, id, "Anonymous"); 
+        std::thread(client_handle, client_socket, id, std::ref(clients)).detach(); 
+    }
+
+    close(server_socket);
+    return 0;
+}
