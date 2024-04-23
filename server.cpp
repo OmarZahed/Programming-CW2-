@@ -11,10 +11,7 @@
 #define MAX_LEN 200
 #define NUM_COLORS 6
 
-std::mutex cout_mtx, clients_mtx;  // Mutexes for managing console and client list access
-
-std::string caesarEncrypt(std::string text, int s);
-std::string caesarDecrypt(std::string text, int s);
+std::mutex cout_mtx, clients_mtx;
 
 struct ClientNode {
     int id;
@@ -26,11 +23,11 @@ struct ClientNode {
 
 class ClientRegistry {
 private:
-    ClientNode* head;  // Head of the linked list of clients
+    ClientNode* head;
 
 public:
-    ClientRegistry() : head(nullptr) {} // Constructor initializes head to nullptr
-    ~ClientRegistry() {   // Destructor cleans up all client nodes
+    ClientRegistry() : head(nullptr) {}
+    ~ClientRegistry() {
         ClientNode* current = head;
         while (current != nullptr) {
             ClientNode* next = current->next;
@@ -51,7 +48,7 @@ public:
 
     void unregisterClient(int id) {
         std::lock_guard<std::mutex> lock(clients_mtx);
-        ClientNode* current = head, *prev = nullptr;
+        ClientNode *current = head, *prev = nullptr;
         while (current != nullptr) {
             if (current->id == id) {
                 if (prev) {
@@ -70,21 +67,23 @@ public:
         }
     }
 
-    void broadcast_message(const std::string& msg, int sender_id) {
+    void broadcast_message(const std::string& message, int sender_id, const std::string& sender_name) {
         std::lock_guard<std::mutex> lock(clients_mtx);
         ClientNode* current = head;
         while (current != nullptr) {
             if (current->id != sender_id) {
-                send(current->socket, msg.c_str(), msg.length() + 1, 0);
+                std::string full_message = sender_name + ": " + message;
+                send(current->socket, full_message.c_str(), full_message.length() + 1, 0);
             }
             current = current->next;
         }
     }
 };
 
-// Returns terminal color codes based on an integer code
+ClientRegistry clients;
+
 std::string color(int code) {
-    code %= NUM_COLORS;  // Ensure code is within the valid range of colors
+    code %= NUM_COLORS;
     switch (code) {
         case 0: return "\033[32m"; // Green
         case 1: return "\033[33m"; // Yellow
@@ -92,65 +91,127 @@ std::string color(int code) {
         case 3: return "\033[35m"; // Magenta
         case 4: return "\033[36m"; // Cyan
         case 5: return "\033[34m"; // Blue
-        default: return "\033[0m";  // Reset to default terminal color(white), in case of any issue
+        default: return "\033[0m";
     }
 }
 
-void handle_client(int client_socket, int id, ClientRegistry& clients) {
-    char name[MAX_LEN];
-    recv(client_socket, name, sizeof(name), 0);
-    std::string welcome_message = color(id % NUM_COLORS) + std::string(name) + " has joined" + color(0);
-    clients.broadcast_message(welcome_message, id);
+void shared_print(const std::string& str, bool endLine = true) {
+    std::lock_guard<std::mutex> guard(cout_mtx);
+    std::cout << str;
+    if (endLine)
+        std::cout << std::endl;
+}
+
+bool verifyUser(const std::string& username, const std::string& password) {
+    std::ifstream file("usercred");
+    std::string line, usr, pwd;
+    while (getline(file, line)) {
+        std::istringstream iss(line);
+        if (iss >> usr >> pwd) {
+            if (usr == username && pwd == password) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+void User_Register(const std::string& username, const std::string& password) {
+    std::ofstream file("usercred", std::ios::app);
+    file << username << " " << password << std::endl;
+}
+
+// Handle clients in case of success or failure
+void handle_client(int client_socket, int id) {
+    char buffer[MAX_LEN] = {0};
+    recv(client_socket, buffer, MAX_LEN, 0);
+
+    std::istringstream ss(buffer);
+    std::string command, username, password;
+    ss >> command >> username >> password;
+
+    if (command == "login" && verifyUser(username, password)) {
+        std::string success_msg = "Login Successful";
+        send(client_socket, success_msg.c_str(), success_msg.length() + 1, 0);
+    } else if (command == "register") {
+        if (!verifyUser(username, password)) {
+            User_Register(username, password);
+            std::string reg_success_msg = "Registration Successful";
+            send(client_socket, reg_success_msg.c_str(), reg_success_msg.length() + 1, 0);
+        } else {
+            std::string user_exists_msg = "Username already exists";
+            send(client_socket, user_exists_msg.c_str(), user_exists_msg.length() + 1, 0);
+        }
+    } else {
+        std::string auth_fail_msg = "Authentication Failed";
+        send(client_socket, auth_fail_msg.c_str(), auth_fail_msg.length() + 1, 0);
+        return;  // Terminate this client thread if login fails
+    }
+
+    clients.registerClient(client_socket, id, username);
+
+    std::string welcome_message = username + " has joined the chat\n";
+    clients.broadcast_message(welcome_message, id, "Server");
+    shared_print(color(id % NUM_COLORS) + welcome_message + "\033[0m");
 
     char str[MAX_LEN];
     while (true) {
-        int bytes_received = recv(client_socket, str, sizeof(str), 0);
-        if (bytes_received <= 0) break;  // Break on disconnection
-        std::string message = color(id % NUM_COLORS) + std::string(name) + ": " + std::string(str) + color(0);
-        clients.broadcast_message(message, id);
+        memset(str, 0, MAX_LEN);
+        int bytes_received = recv(client_socket, str, MAX_LEN, 0);
+        if (bytes_received <= 0) break;
+
+        str[bytes_received] = '\0';  // Ensure null termination
+
+        if (strcmp(str, "#exit") == 0) {
+            std::string message = username + " has left";
+            clients.broadcast_message(message, id, "Server");
+            shared_print(color(id % NUM_COLORS) + message + "\033[0m");
+            break;
+        }
+        clients.broadcast_message(std::string(str), id, username);
+        shared_print(color(id % NUM_COLORS) + username + ": " + "\033[0m" + std::string(str));
     }
+
+    clients.unregisterClient(id);
 }
 
 int main() {
     int server_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (server_socket == -1) {
         perror("socket: ");
-        return -1;
+        exit(-1);
     }
 
-    struct sockaddr_in server_addr;
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(12345);
-    server_addr.sin_addr.s_addr = INADDR_ANY;
-    memset(&server_addr.sin_zero, 0, sizeof(server_addr.sin_zero));
+    struct sockaddr_in server;
+    server.sin_family = AF_INET;
+    server.sin_port = htons(12345);
+    server.sin_addr.s_addr = INADDR_ANY;
+    memset(&server.sin_zero, 0, sizeof(server.sin_zero));
 
-    if (bind(server_socket, (struct sockaddr *)&server_addr, sizeof(server_addr)) == -1) {
-        perror("bind: ");
-        close(server_socket);
-        return -1;
+    if (bind(server_socket, (struct sockaddr *)&server, sizeof(server)) == -1) {
+        perror("bind error: ");
+        exit(-1);
     }
 
-    if (listen(server_socket, 10) == -1) {
-        perror("listen: ");
-        close(server_socket);
-        return -1;
+    if (listen(server_socket, 8) == -1) {
+        perror("listen error: ");
+        exit(-1);
     }
 
-    std::cout << color(4) << "Server is running on port 12345" << color(0) << std::endl;
+    std::cout << "\033[35m" << "\n\t  ================= Lets Chat =================   " << std::endl << "\033[0m";
 
-    ClientRegistry clients;
+    int id = 0;
     while (true) {
-        struct sockaddr_in client_addr;
-        socklen_t addr_size = sizeof(client_addr);
-        int client_socket = accept(server_socket, (struct sockaddr *)&client_addr, &addr_size);
+        struct sockaddr_in client;
+        socklen_t len = sizeof(client);
+        int client_socket = accept(server_socket, (struct sockaddr *)&client, &len);
         if (client_socket == -1) {
-            perror("accept: ");
+            perror("accept error: ");
             continue;
         }
-
-        int id = ntohs(client_addr.sin_port);  // Use the client's port as a simple ID
-        clients.registerClient(client_socket, id, "Anonymous");  // Register new client
-        std::thread(client_handle, client_socket, id, std::ref(clients)).detach();  // Start a new thread to handle the client
+        id++;
+        std::thread t(handle_client, client_socket, id);
+        t.detach();
     }
 
     close(server_socket);
