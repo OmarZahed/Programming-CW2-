@@ -10,8 +10,13 @@
 #include <mutex>
 
 #define MAX_LEN 200
-//still needs to be implemented for visuals**
 #define NUM_COLORS 6 
+
+bool exit_flag = false;  // Flag to control the flow based on user exit command
+std::thread t_send, t_recv;  // Threads for sending and receiving messages
+int client_socket;  // Socket descriptor for the client
+const char* def_col = "\033[0m";  // Default terminal color (white), resets color after messages
+
 
 bool exit_flag = false;
 std::thread t_send, t_recv;
@@ -22,6 +27,20 @@ std::string color(int code);
 void send_message(int client_socket);
 void recv_message(int client_socket);
 //declare register and login still needs implementation 
+
+// Returns the terminal color string based on the provided code
+std::string color(int code) {
+    code %= NUM_COLORS;  // Ensure code is within the valid range of colors
+    switch (code) {
+        case 0: return "\033[35m";  // Magenta
+        case 1: return "\033[32m";  // Green
+        case 2: return "\033[31m";  // Red
+        case 3: return "\033[36m";  // Cyan
+        case 4: return "\033[34m";  // Blue
+        case 5: return "\033[33m";  // Yellow
+        default: return def_col;    // Default color
+    }
+}
 
 // Entry point of the application
 int main() {
