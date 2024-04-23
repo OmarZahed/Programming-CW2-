@@ -34,7 +34,7 @@ std::string color(int code) {
         case 3: return "\033[36m"; // Cyan
         case 4: return "\033[34m"; // Blue
         case 5: return "\033[33m"; // Yellow
-        default: return "\033[0m";  // Reset to default color , incase of any issue
+        default: return "\033[0m";  // Reset to default color(white) , incase of any issue
     }
 }
 
@@ -48,8 +48,8 @@ int main() {
 
     struct sockaddr_in client;
     client.sin_family = AF_INET;
-    client.sin_port = htons(12345);
-    client.sin_addr.s_addr = inet_addr("127.0.0.1");
+    client.sin_port = htons(12345);//port
+    client.sin_addr.s_addr = inet_addr("127.0.0.1");// IP addresse 
     memset(&client.sin_zero, 0, sizeof(client.sin_zero));
 
     if (connect(client_socket, (struct sockaddr *)&client, sizeof(client)) == -1) {
@@ -73,7 +73,7 @@ int main() {
 
     return 0;
 }
-
+// Handles the user's decision to either log in or register and sends encrypted credentials to the server.
 void loginOrRegister(int shift) {
     int choice;
     std::cout << "1. Login\n2. Register\nChoose (1-2): ";
@@ -125,7 +125,7 @@ void loginOrRegister(int shift) {
         std::cout << decryptedResponse << std::endl;
     }
 }
-
+// Handles shutdown on receiving a signal like SIGINT.
 void Exit_handler(int signal) {
     const char* str = "BREAK";
     send(client_socket, str, strlen(str) + 1, 0);  // Send the exit command
@@ -135,7 +135,7 @@ void Exit_handler(int signal) {
     close(client_socket);
     std::exit(signal);
 }
-
+// Sends encrypted messages to the server in a loop until the user decides to exit.
 void send_message(int client_socket, int shift) {
     while (!exit_flag) {
         std::cout << color(1) << "You : " << def_col;
@@ -149,7 +149,7 @@ void send_message(int client_socket, int shift) {
         }
     }
 }
-
+// Receives messages from the server, decrypts them, and displays them to the user.
 void recv_message(int client_socket, int shift) {
     while (!exit_flag) {
         char str[MAX_LEN];
