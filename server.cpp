@@ -11,7 +11,7 @@
 #define MAX_LEN 200
 #define NUM_COLORS 6
 
-std::mutex cout_mtx, clients_mtx;
+std::mutex cout_mtx, clients_mtx;  // Mutexes for managing console and client list access
 
 std::string caesarEncrypt(std::string text, int s);
 std::string caesarDecrypt(std::string text, int s);
@@ -26,11 +26,11 @@ struct ClientNode {
 
 class ClientRegistry {
 private:
-    ClientNode* head;
+    ClientNode* head;  // Head of the linked list of clients
 
 public:
-    ClientRegistry() : head(nullptr) {} //Constructor
-    ~ClientRegistry() {   //Destructor
+    ClientRegistry() : head(nullptr) {} // Constructor initializes head to nullptr
+    ~ClientRegistry() {   // Destructor cleans up all client nodes
         ClientNode* current = head;
         while (current != nullptr) {
             ClientNode* next = current->next;
@@ -44,20 +44,19 @@ public:
 
     void registerClient(int socket, int id, const std::string& name) {
         std::lock_guard<std::mutex> lock(clients_mtx);
-        ClientNode* new_client = new ClientNode{ id, name, socket, std::thread(), nullptr };
+        ClientNode* new_client = new ClientNode{id, name, socket, std::thread(), nullptr};
         new_client->next = head;
         head = new_client;
     }
 
     void unregisterClient(int id) {
         std::lock_guard<std::mutex> lock(clients_mtx);
-        ClientNode* current = head, * prev = nullptr;
+        ClientNode* current = head, *prev = nullptr;
         while (current != nullptr) {
             if (current->id == id) {
                 if (prev) {
                     prev->next = current->next;
-                }
-                else {
+                } else {
                     head = current->next;
                 }
                 if (current->th.joinable())
@@ -71,31 +70,46 @@ public:
         }
     }
 
-void broadcast_message(int num, int sender_id) {
+    void broadcast_message(const std::string& msg, int sender_id) {
         std::lock_guard<std::mutex> lock(clients_mtx);
         ClientNode* current = head;
         while (current != nullptr) {
             if (current->id != sender_id) {
-                send(current->socket, &num, sizeof(num), 0);
+                send(current->socket, msg.c_str(), msg.length() + 1, 0);
             }
             current = current->next;
         }
     }
 };
 
-void handle_client(int client_socket, int id, Clientregistry& clients) { //Handle indivisual client connection
+// Returns terminal color codes based on an integer code
+std::string color(int code) {
+    code %= NUM_COLORS;  // Ensure code is within the valid range of colors
+    switch (code) {
+        case 0: return "\033[32m"; // Green
+        case 1: return "\033[33m"; // Yellow
+        case 2: return "\033[31m"; // Red
+        case 3: return "\033[35m"; // Magenta
+        case 4: return "\033[36m"; // Cyan
+        case 5: return "\033[34m"; // Blue
+        default: return "\033[0m";  // Reset to default terminal color(white), in case of any issue
+    }
+}
+
+void handle_client(int client_socket, int id, ClientRegistry& clients) {
     char name[MAX_LEN];
-    recv(client_socket, name, sizeof(name), 0);  // recv to identify the client messaging
-    std::string welcome_message = std::string(name) + " has joined";
-    clients.broadcast_message(welcome_message, id); // welcome message broadcasted to all users
+    recv(client_socket, name, sizeof(name), 0);
+    std::string welcome_message = color(id % NUM_COLORS) + std::string(name) + " has joined" + color(0);
+    clients.broadcast_message(welcome_message, id);
 
     char str[MAX_LEN];
     while (true) {
         int bytes_received = recv(client_socket, str, sizeof(str), 0);
-        if (bytes_received <= 0) break;  //when disconnection break
-        std::string message = std::string(name) + ": " + std::string(str);
+        if (bytes_received <= 0) break;  // Break on disconnection
+        std::string message = color(id % NUM_COLORS) + std::string(name) + ": " + std::string(str) + color(0);
         clients.broadcast_message(message, id);
     }
+}
 
 int main() {
     int server_socket = socket(AF_INET, SOCK_STREAM, 0);
@@ -103,7 +117,7 @@ int main() {
         perror("socket: ");
         return -1;
     }
-//setting IP and port for establishing connection
+
     struct sockaddr_in server_addr;
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(12345);
@@ -122,7 +136,7 @@ int main() {
         return -1;
     }
 
-    std::cout << "Server is running on port 12345" << std::endl;
+    std::cout << color(4) << "Server is running on port 12345" << color(0) << std::endl;
 
     ClientRegistry clients;
     while (true) {
@@ -134,9 +148,9 @@ int main() {
             continue;
         }
 
-        int id = ntohs(client_addr.sin_port); 
-        clients.registerClient(client_socket, id, "Anonymous"); 
-        std::thread(client_handle, client_socket, id, std::ref(clients)).detach(); 
+        int id = ntohs(client_addr.sin_port);  // Use the client's port as a simple ID
+        clients.registerClient(client_socket, id, "Anonymous");  // Register new client
+        std::thread(client_handle, client_socket, id, std::ref(clients)).detach();  // Start a new thread to handle the client
     }
 
     close(server_socket);
