@@ -23,8 +23,8 @@ Open a terminal and type the following command to run the client program:
 
 
 ## User Options
-1. Upon starting the client program, users will be presented with the following options:
+Upon starting the client program, users will be presented with the following options:
 
-2. Login: If you already have an account, choose this option and provide your username and password to access the chat.
+1. Login: If you already have an account, choose this option and provide your username and password to access the chat.
 
-# Register: New users should select this option to create a new account by providing a username and password.
+2.Register: New users should select this option to create a new account by providing a username and password.
