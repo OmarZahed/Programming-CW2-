@@ -10,8 +10,8 @@ Chatting Application (Multithreading)
 ### Compiling the Code
 Compile the server and client programs using the following commands in the terminal:
 
-  g++ server.cpp -lpthread -o server
-  g++ client.cpp -lpthread -o client
+1. **g++ server.cpp -lpthread -o server**
+2. __g++ client.cpp -lpthread -o client__
   
 ## Start the server:
 Open a terminal and type the following command to run the server program:
